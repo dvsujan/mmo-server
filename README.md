@@ -1,1 +1,1 @@
-# implementation of massively multiplayr only server (MMO)
+# implementation of massively multiplayer online server (MMO)
