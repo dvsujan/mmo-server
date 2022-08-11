@@ -27,7 +27,7 @@
 		"*.desktop": "properties",
 		".clang-format": "yaml"
 	},
-	// "terminal.integrated.defaultProfile.windows": "Git Bash",
+	"terminal.integrated.defaultProfile.windows": "Git Bash",
 	"terminal.integrated.env.windows": {
 		"Path": "C:/mingw32/bin;C:/SFML-2.5.1/bin"
 	},
