@@ -3,9 +3,11 @@
 // #include "headers/ServerHandle.hpp"
 #include "headers/Singleton.hpp"
 #include <SFML/Network.hpp>
+#include <SFML/System.hpp>
 #include <iostream>
 #include <thread>
-#define ticks_per_second 60
+#define ticks_per_second 120
+#define PORT 6968
 
 std::unordered_map<int, std::unique_ptr<User>> clients;
 // std::unordered_map<int, void (*)(int, sf::Packet)> packetHandler;
@@ -16,6 +18,7 @@ enum serverPackets
 	spwanPlayer,
 	playerPosition,
 	playerRotation,
+	serverFull
 };
 
 enum clientPackets
@@ -55,10 +58,11 @@ void Server::TCPListen()
 	//connect to multiple clients at same time and no of members in server should be less than maxPlayers
 	listener.listen(port);
 	listener.setBlocking(false);
-
 	while (true)
 	{
 		sf::TcpSocket* socket = new sf::TcpSocket();
+		//UNCOMMENT
+		// sf::UdpSocket* usocket = new sf::UdpSocket();
 		if (listener.accept(*socket) == sf::Socket::Done)
 		{
 			std::cout << "trying to connect to :" << socket->getRemoteAddress() << std::endl;
@@ -66,15 +70,21 @@ void Server::TCPListen()
 			if (clients.size() < maxPlayers)
 			{
 				//run each client in it's own threads
-
 				int id = clients.size() + 1;
 				clients.insert(std::make_pair(id, new User(id)));
 				// clients[id] = new User(id);
 				clients.at(id)->tcp->connect(socket);
+				// UNCOMMENT
+				// usocket->bind(listener.getLocalPort());
+				// clients.at(id)->udp->Connect(usocket, socket->getRemoteAddress());
 			}
 			else
 			{
 				std::cout << "Server is full" << std::endl;
+				sf::Packet p;
+				p << serverPackets::serverFull;
+				p << "Server is full";
+				socket->send(p);
 				socket->disconnect();
 			}
 		}
@@ -86,10 +96,15 @@ void Server::TCPListen()
 		for (auto it = clients.begin(); it != clients.end(); it++)
 		{
 			it->second->tcp->update();
+			//UNCOMMENT
+			// it->second->udp->update();
 		}
 		//update gameLogic
 		GameLogic::update();
-
+		// float currentTime = clock.restart().asSeconds();
+		// float fps = 1.f / (currentTime - lastTime);
+		// lastTime = currentTime;
+		// std::cout << "Running at " << fps << " ticks" << std::endl;
 		//sleep for ticks time
 		sf::sleep(sf::milliseconds(1000 / ticks_per_second));
 	}
@@ -100,32 +115,39 @@ User::User(int id)
 {
 	this->id = id;
 	this->tcp = new TCP(id);
+	this->udp = new UDP(id);
 }
+
 void User::sendIntoGame(std::string username)
 {
-	this->player = new Player(id, username, sf::Vector2f(0, 0));
+	this->player = new Player(id, username, sf::Vector2f(400, 300));
 	for (auto& client : clients)
 	{
-
 		if (client.second->player != nullptr)
 		{
 			if (client.first != this->id)
 			{
 				//send player to client
-				ServerSend::spwanPlayer(id, *this->player);
+				ServerSend::spwanPlayer(this->id, *client.second->player);
 			}
 		}
 	}
-	for (auto& client : clients)
+	// for (unsigned int i = 1; i <= clients.size(); i++)
+	// {
+	// 	if(
+
+	// 	)
+	// }
+	for (unsigned int i = 1; i <= clients.size(); i++)
 	{
-		if (client.second->player != nullptr)
+		if (clients[i]->player != nullptr)
 		{
-			ServerSend::spwanPlayer(client.first, *this->player);
+			ServerSend::spwanPlayer(i, *clients[i]->player);
 		}
 	}
 }
-//tcp stuff
 
+//tcp stuff
 TCP::TCP(int id)
 {
 	this->id = id;
@@ -183,23 +205,100 @@ void TCP::update()
 
 void TCP::recieve()
 {
+	// char buffer[1024];
+	// std::size_t received;
+	// if (this->socket->receive(buffer, sizeof(buffer), received) == sf::Socket::Done)
+	// {
+	// 	if (received > 0)
+	// 	{
+	// 		std::cout << "Recieved: " << buffer << " From Client " << this->id << std::endl;
+	// 	}
+	// }
+	sf::Packet pp;
+	while (this->socket->receive(pp) == sf::Socket::Done)
+	{
+		if (pp.getDataSize() > 0)
+		{
+			this->HandlePacket(pp);
+		}
+	}
+}
+//UDP stuff
+UDP::UDP(int id)
+{
+	this->id = id;
+}
+void UDP::Connect(sf::UdpSocket* socket, sf::IpAddress adress)
+{
+	this->usocket = socket;
+	this->senderIp = adress;
+	this->usocket->setBlocking(false);
+	this->usocket->bind(26950);
+	std::cout << "Client " << this->id << " connected via udp" << std::endl;
+}
+
+void UDP::send(sf::Packet packet)
+{
+	this->usocket->send(packet, this->senderIp, (unsigned short)this->port);
+}
+
+void UDP::Recieve()
+{
+	//IpAdress any then port as 0
+	sf::Packet packet;
+	sf::IpAddress sender;
+	unsigned short senderPort = 26950;
+	// while (this->usocket->receive(packet, sender, senderPort) == sf::Socket::Done)
+	// {
+	// 	if (packet.getDataSize() > 0)
+	// 	{
+	// 		this->HandlePacket(packet);
+	// 	}
+	// }
 	char buffer[1024];
 	std::size_t received;
-	if (this->socket->receive(buffer, sizeof(buffer), received) == sf::Socket::Done)
+	if (this->usocket->receive(buffer, sizeof(buffer), received, sender, senderPort) == sf::Socket::Done)
 	{
 		if (received > 0)
 		{
 			std::cout << "Recieved: " << buffer << " From Client " << this->id << std::endl;
 		}
 	}
-	else if (this->socket->receive(this->recievePacket) == sf::Socket::Done)
+}
+
+void UDP::HandlePacket(sf::Packet& packet)
+{
+	int packetID;
+	packet >> packetID;
+	if (!packetID)
 	{
-		if (this->recievePacket.getDataSize() > 0)
-		{
-			this->HandlePacket(this->recievePacket);
-		}
+		std::cout << "not valid packet" << std::endl;
+		return;
+	}
+	switch (packetID)
+	{
+		case (int)clientPackets::welcomeRecieved:
+			ServerHandle::welcomeRecieved(this->id, packet);
+			break;
+		case (int)clientPackets::playerMovement:
+			ServerHandle::playerMovement(this->id, packet);
+			break;
+		default:
+			std::cout << "not valid packet from client: " << this->id << std::endl;
+			break;
 	}
 }
+
+void UDP::update()
+{
+	this->Recieve();
+}
+
+void UDP::close()
+{
+	this->usocket->unbind();
+}
+
 //player stuff
 
 Player::Player(int id, std::string name, sf::Vector2f spwan)
@@ -216,31 +315,33 @@ Player::Player(int id, std::string name, sf::Vector2f spwan)
 
 void Player::update()
 {
-	sf::Vector2f inputDirectoin = sf::Vector2f(0, 0);
-	if (inputs[0])
+	if (this->inputs[0] == true)
 	{
-		inputDirectoin.x -= vel;
+		this->position.y -= vel;
 	}
-	if (inputs[1])
+	if (this->inputs[1] == true)
 	{
-		inputDirectoin.x += vel;
+		this->position.x -= vel;
 	}
-	if (inputs[2])
+	if (this->inputs[2] == true)
 	{
-		inputDirectoin.y -= vel;
+		this->position.y += vel;
 	}
-	if (inputs[3])
+	if (this->inputs[3] == true)
 	{
-		inputDirectoin.y += vel;
+		this->position.x += vel;
 	}
-	move(inputDirectoin);
-}
-void Player::move(sf::Vector2f direction)
-{
-	this->position += direction;
 	ServerSend::playerPosition(*this);
 	ServerSend::playerRotation(*this);
 }
+void Player::move(sf::Vector2f direction)
+{
+	//print direction;
+	direction.x = direction.x / 10;
+	// std::cout << direction.x << " " << direction.y << std::endl;
+	// this->position += direction;
+}
+
 void Player::setInput(bool* inputs, float rotation)
 {
 	this->inputs = inputs;
@@ -252,6 +353,7 @@ void ServerHandle::welcomeRecieved(int clientId, sf::Packet& packet)
 {
 	int clientIdCheck;
 	packet >> clientIdCheck;
+	std::cout << "recieved from Client " << clientIdCheck << " " << clientId << std::endl;
 	if (clientIdCheck != clientId)
 	{
 		std::cout << "client Id mismatch" << std::endl;
@@ -265,19 +367,42 @@ void ServerHandle::welcomeRecieved(int clientId, sf::Packet& packet)
 }
 void ServerHandle::playerMovement(int clientId, sf::Packet& packet)
 {
-	int size;
-	packet >> size;
-	bool* inputs = new bool[size];
-	for (int i = 0; i < size; i++)
+	// int size;
+	// packet >> size;
+	int* inputs = new int[4];
+	for (int i = 0; i < 4; i++)
 	{
-		bool a;
-		packet >> a;
-		inputs[i] = a;
+		packet >> inputs[i];
+		// std::cout << inputs[i] << " ";
+	}
+	bool* inputts = new bool[4];
+	for (int i = 0; i < 4; i++)
+	{
+		inputts[i] = false;
+	}
+	//if 1 true else false
+	if (inputs[0] == 1)
+	{
+		inputts[0] = true;
+	}
+	if (inputs[1] == 1)
+	{
+		inputts[1] = true;
+	}
+	if (inputs[2] == 1)
+	{
+		inputts[2] = true;
+	}
+	if (inputs[3] == 1)
+	{
+		inputts[3] = true;
 	}
 	float rotation;
+	// std::cout << std::endl;
+	//print inputs
 	packet >> rotation;
-	std::cout << clientId << std::endl;
-	clients[clientId]->player->setInput(inputs, rotation);
+	// std::cout << clientId << std::endl;
+	clients[clientId]->player->setInput(inputts, rotation);
 }
 //server send stuff
 void ServerSend::sendTcpData(int clientId, sf::Packet packet)
@@ -287,23 +412,30 @@ void ServerSend::sendTcpData(int clientId, sf::Packet packet)
 
 void ServerSend::sendTcpDataAll(sf::Packet packet)
 {
-	for (unsigned int i = 0; i < clients.size(); i++)
+	for (auto& client : clients)
 	{
-		clients[i]->tcp->send(packet);
+		if (client.second->player != nullptr)
+		{
+			client.second->tcp->send(packet);
+		}
 	}
 }
 
 void ServerSend::welcome(int clientId, std::string str)
 {
 	sf::Packet packet;
+	packet << (int)serverPackets::welcome;
+	packet << clientId;
 	packet << str;
-	clients[clientId]->tcp->send(packet);
+	sendTcpData(clientId, packet);
 }
 
 void ServerSend::spwanPlayer(int clientId, Player& player)
 {
 	sf::Packet packet;
 	packet << (int)serverPackets::spwanPlayer;
+	// std::cout << "spawning player Id: " << clientId << std::endl;
+	// std::cout << "------------------" << std::endl;
 	packet << player.id;
 	packet << player.username;
 	packet << player.position.x;
@@ -315,10 +447,11 @@ void ServerSend::spwanPlayer(int clientId, Player& player)
 void ServerSend::playerPosition(Player& player)
 {
 	sf::Packet packet;
+
 	packet << (int)serverPackets::playerPosition;
 	packet << player.id;
-	packet << player.position.x;
-	packet << player.position.y;
+	packet << (int)player.position.x;
+	packet << (int)player.position.y;
 	packet << player.rotation;
 	sendTcpDataAll(packet);
 }
@@ -337,6 +470,10 @@ void GameLogic::update()
 {
 	for (auto& client : clients)
 	{
-		client.second->player->update();
+		if (client.second->player != nullptr)
+		{
+			client.second->player->update();
+			// std::cout << "updating player: " << client.second->id << std::endl;
+		}
 	}
 }

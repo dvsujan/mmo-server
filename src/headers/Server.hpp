@@ -10,6 +10,8 @@ class ServerSend;
 class User;
 class TCP;
 class GameLogic;
+class UDP;
+
 class TCP
 {
 public:
@@ -25,13 +27,30 @@ public:
 	void update();
 };
 
+class UDP
+{
+public:
+	int id;
+	sf::UdpSocket* usocket;
+	sf::IpAddress senderIp;
+	UDP(int id);
+	const unsigned short port = 6969;
+	void Connect(sf::UdpSocket* socket, sf::IpAddress adress);
+	void send(sf::Packet packet);
+	void Recieve();
+	void HandlePacket(sf::Packet& packet);
+	void close();
+	void update();
+};
+
 class User
 {
 public:
 	int id;
 	TCP* tcp;
+	UDP* udp;
 	User(int id);
-	Player* player;
+	Player* player = NULL;
 	void sendIntoGame(std::string username);
 };
 
