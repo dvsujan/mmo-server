@@ -16,7 +16,7 @@ class TCP
 {
 public:
 	int id;
-	sf::TcpSocket* socket;
+	sf::TcpSocket* socket = nullptr;
 	sf::Packet recievePacket;
 	TCP(int id);
 	void connect(sf::TcpSocket* socket);
@@ -52,6 +52,7 @@ public:
 	User(int id);
 	Player* player = NULL;
 	void sendIntoGame(std::string username);
+	void disconnet();
 };
 
 class ServerSend
@@ -83,7 +84,7 @@ public:
 	bool* inputs;
 	sf::Vector2f position;
 	float rotation = 0;
-	float vel = 2;
+	float vel = 5;
 	Player(int id, std::string name, sf::Vector2f spwan);
 	void update();
 	void setInput(bool* inpts, float rotation);
@@ -112,6 +113,7 @@ private:
 	unsigned int maxPlayers;
 	int port;
 	sf::TcpListener listener;
+	// int noPlayers;
 
 public:
 	Server(int maxPlayers, int port);

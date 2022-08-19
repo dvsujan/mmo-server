@@ -6,12 +6,12 @@
 #include <SFML/System.hpp>
 #include <iostream>
 #include <thread>
-#define ticks_per_second 120
+#define ticks_per_second 30
 #define PORT 6968
 
 std::unordered_map<int, std::unique_ptr<User>> clients;
 // std::unordered_map<int, void (*)(int, sf::Packet)> packetHandler;
-
+unsigned int noPlayers;
 enum serverPackets
 {
 	welcome = 1,
@@ -29,11 +29,11 @@ enum clientPackets
 
 Server::Server(int maxPlayers, int port)
 {
-
 	std::cout << "Server Started" << std::endl;
 	std::cout << "Running at " << ticks_per_second << " ticks per second" << std::endl;
 	this->maxPlayers = maxPlayers;
 	this->port = port;
+	noPlayers = 0;
 	// this->listener = sf::TcpListener();
 }
 void Server::start()
@@ -44,10 +44,10 @@ void Server::start()
 
 void Server::initServer()
 {
-	// for (unsigned int i = 1; i <= maxPlayers; i++)
-	// {
-	// 	clients.insert(std::make_pair(i, new Client(i)));
-	// }
+	for (unsigned int i = 1; i <= maxPlayers; i++)
+	{
+		clients.insert(std::make_pair(i, new User(i)));
+	}
 	// packetHandler.insert(std::make_pair((int)clientPackets::welcomeRecieved, &ServerHandle::welcomeRecieved));
 	// packetHandler.insert(std::make_pair((int)clientPackets::playerMovement, &ServerHandle::playerMovement));
 	std::cout << "Packets initalized" << std::endl;
@@ -63,17 +63,27 @@ void Server::TCPListen()
 		sf::TcpSocket* socket = new sf::TcpSocket();
 		//UNCOMMENT
 		// sf::UdpSocket* usocket = new sf::UdpSocket();
+		// std::cout << noPlayers << std::endl;
 		if (listener.accept(*socket) == sf::Socket::Done)
 		{
 			std::cout << "trying to connect to :" << socket->getRemoteAddress() << std::endl;
+			noPlayers++;
 			//assign a client socket only if no of connections < maxPlayers client
-			if (clients.size() < maxPlayers)
+			if (noPlayers <= maxPlayers)
 			{
-				//run each client in it's own threads
-				int id = clients.size() + 1;
-				clients.insert(std::make_pair(id, new User(id)));
-				// clients[id] = new User(id);
-				clients.at(id)->tcp->connect(socket);
+				// int id = clients.size() + 1;
+				// clients.insert(std::make_pair(id, new User(id)));
+				// // clients[id] = new User(id);
+				// clients.at(id)->tcp->connect(socket);
+				for (int i = 1; i <= (int)maxPlayers; i++)
+				{
+					if (clients[i]->tcp->socket == nullptr)
+					{
+						clients[i]->tcp->connect(socket);
+						// std::cout << "connected to :" << socket->getRemoteAddress() << std::endl;
+						break;
+					}
+				}
 				// UNCOMMENT
 				// usocket->bind(listener.getLocalPort());
 				// clients.at(id)->udp->Connect(usocket, socket->getRemoteAddress());
@@ -86,6 +96,7 @@ void Server::TCPListen()
 				p << "Server is full";
 				socket->send(p);
 				socket->disconnect();
+				noPlayers--;
 			}
 		}
 		else
@@ -95,7 +106,11 @@ void Server::TCPListen()
 		//iterate all clients and update them
 		for (auto it = clients.begin(); it != clients.end(); it++)
 		{
-			it->second->tcp->update();
+			if (it->second->tcp->socket != nullptr)
+			{
+				it->second->tcp->update();
+			}
+			// it->second->tcp->update();
 			//UNCOMMENT
 			// it->second->udp->update();
 		}
@@ -147,6 +162,14 @@ void User::sendIntoGame(std::string username)
 	}
 }
 
+void User::disconnet()
+{
+	std::cout << "player " << this->tcp->socket->getRemoteAddress() << "disconnected" << std::endl;
+	noPlayers--;
+	player = nullptr;
+	this->tcp->close();
+}
+
 //tcp stuff
 TCP::TCP(int id)
 {
@@ -157,6 +180,7 @@ TCP::TCP(int id)
 void TCP::close()
 {
 	this->socket->disconnect();
+	this->socket = nullptr;
 }
 
 void TCP::connect(sf::TcpSocket* socket)
@@ -194,6 +218,7 @@ void TCP::HandlePacket(sf::Packet& packet)
 			break;
 		default:
 			std::cout << "not valid packet from client: " << this->id << std::endl;
+			clients[this->id]->disconnet();
 			break;
 	}
 }
@@ -215,11 +240,24 @@ void TCP::recieve()
 	// 	}
 	// }
 	sf::Packet pp;
-	while (this->socket->receive(pp) == sf::Socket::Done)
+	if (this->socket != nullptr)
 	{
-		if (pp.getDataSize() > 0)
+		while (this->socket->receive(pp) == sf::Socket::Done)
 		{
-			this->HandlePacket(pp);
+			if (pp.getDataSize() > 0)
+			{
+				this->HandlePacket(pp);
+			}
+			else
+			{
+				std::cout << "not valid packet" << std::endl;
+				clients[this->id]->disconnet();
+			}
+		}
+		if (this->socket->receive(pp) == sf::Socket::Disconnected)
+		{
+			clients[this->id]->disconnet();
+			// noPlayers--;
 		}
 	}
 }
