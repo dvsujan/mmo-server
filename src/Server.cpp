@@ -136,30 +136,58 @@ User::User(int id)
 void User::sendIntoGame(std::string username)
 {
 	this->player = new Player(id, username, sf::Vector2f(400, 300));
-	for (auto& client : clients)
-	{
-		if (client.second->player != nullptr)
-		{
-			if (client.first != this->id)
-			{
-				//send player to client
-				ServerSend::spwanPlayer(this->id, *client.second->player);
-			}
-		}
-	}
-	// for (unsigned int i = 1; i <= clients.size(); i++)
-	// {
-	// 	if(
-
-	// 	)
-	// }
+	std::cout << "clients size " << clients.size() << std::endl;
+	int x = 0;
 	for (unsigned int i = 1; i <= clients.size(); i++)
 	{
 		if (clients[i]->player != nullptr)
 		{
-			ServerSend::spwanPlayer(i, *clients[i]->player);
+			if (clients[i]->id != this->id)
+			{
+				// send player to client
+				x++;
+				ServerSend::spwanPlayer(this->id, *clients[i]->player);
+				std::cout << "spwan player at clientno: " << this->id << " " << clients[i]->player->getUsername() << std::endl;
+			}
 		}
 	}
+	std::cout << "loop ran = " << x << std::endl;
+	for (unsigned int i = 1; i <= clients.size(); i++)
+	{
+		if (clients[i]->player != nullptr)
+		{
+			for (unsigned int j = 1; j <= clients.size(); j++)
+			{
+				if (clients[j]->player != nullptr)
+				{
+					// send player to client
+					ServerSend::spwanPlayer(clients[j]->id, *clients[i]->player);
+					std::cout << "spwan player at clientno: " << clients[j]->id << " " << clients[i]->player->getUsername() << std::endl;
+				}
+			}
+		}
+	}
+	//spwan players correctly
+	// for (auto it = clients.begin(); it != clients.end(); it++)
+	// {
+	// 	if (it->second->player != nullptr)
+	// 	{
+	// 		if (it->second->id != this->id)
+	// 		{
+	// 			ServerSend::spwanPlayer(this->id, *it->second->player);
+	// 			std::cout << "spwan player at clientno: " << this->id << " " << it->second->player->getUsername() << std::endl;
+	// 		}
+	// 	}
+	// }
+
+	// for (auto it = clients.begin(); it != clients.end(); it++)
+	// {
+	// 	if (it->second->player != nullptr)
+	// 	{
+	// 		ServerSend::spwanPlayer(it->second->id, *it->second->player);
+	// 		std::cout << "spwan player at clientno: " << it->second->id << " " << it->second->player->getUsername() << std::endl;
+	// 	}
+	// }
 }
 
 void User::disconnet()
