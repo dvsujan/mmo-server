@@ -7,6 +7,8 @@
 #include <thread>
 #define ticks_per_second 30
 #define PORT 6968
+#define SCREEN_WIDTH 1000
+#define SCREEN_HEIGHT 800
 
 std::unordered_map<int, std::unique_ptr<User>> clients;
 // std::unordered_map<int, void (*)(int, sf::Packet)> packetHandler;
@@ -139,7 +141,7 @@ User::User(int id)
 
 void User::sendIntoGame(std::string username)
 {
-	this->player = new Player(id, username, sf::Vector2f(400, 300));
+	this->player = new Player(id, username, sf::Vector2f(rand()%SCREEN_WIDTH ,rand()%SCREEN_HEIGHT));
 	// std::cout << "clients size " << clients.size() << std::endl;
 	for (unsigned int i = 1; i <= clients.size(); i++)
 	{
@@ -555,13 +557,13 @@ void ServerSend::spwanPlayer(int clientId, Player& player)
 {
 	sf::Packet packet;
 	packet << (int)serverPackets::spwanPlayer;
-	// std::cout << "spawning player Id: " << clientId << std::endl;
-	// std::cout << "------------------" << std::endl;
 	packet << player.id;
 	packet << player.username;
 	packet << player.position.x;
 	packet << player.position.y;
 	packet << player.rotation;
+	packet << player.health;
+	packet << player.score;
 	sendTcpData(clientId, packet);
 }
 
